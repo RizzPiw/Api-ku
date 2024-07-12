@@ -1,57 +1,117 @@
-__path = process.cwd();
+const express = require('express');
+const fs = require('fs');
+const path = require('path');
+const bodyParser = require('body-parser');
+const crypto = require('crypto');
 
-var { performance } = require("perf_hooks");
-var fetch = require("node-fetch");
-var express = require("express");
-var router = express.Router();
+const app = express();
+const userFilePath = path.join(__dirname, 'users.json');
 
-router.get("/", (req, res) => {
-	res.sendFile(__path + "/views/home.html");
+app.use(bodyParser.urlencoded({ extended: true }));
+app.use(express.static('public'));
+
+app.get("/", (req, res) => {
+    res.sendFile(__dirname + "/views/home.html");
 });
 
-router.get("/api", (req, res) => {
-	res.sendFile(__path + "/views/index.html");
+app.get("/login", (req, res) => {
+    res.sendFile(__dirname + "/views/login.html");
 });
 
-router.get("/api/status", async (req, res) => {
-	var date = new Date();
-	var jam = date.getHours();
-	var menit = date.getMinutes();
-	var detik = date.getSeconds();
-	var old = performance.now();
-	var neww = performance.now();
-	var ram = `${(process.memoryUsage().heapUsed / 1024 / 1024).toFixed(
-		2
-	)}MB / ${Math.round(require("os").totalmem / 1024 / 1024)}MB`;
-	var cpu = require("os").cpus();
-	var json = await (await fetch("https://api.ipify.org/?format=json")).json();
-	var port = process.env.PORT || 8080 || 5000 || 3000;
-	status = {
-		status: "online",
-		memory: ram,
-		cpu: cpu[0].model,
-		port: port,
-		ip: json.ip,
-		time: `${jam} : ${menit} : ${detik}`,
-		uptime: muptime(process.uptime()),
-		speed: `${neww - old}ms`,
-		info: {
-			owner: "RizzPiw",
-			apikey: "Chat Owner: https://wa.me/62895614033342",
-		},
-	};
-	res.json(status);
+app.get("/register", (req, res) => {
+    res.sendFile(__dirname + "/views/register.html");
 });
 
-module.exports = router;
+app.get("/forgot-password", (req, res) => {
+    res.sendFile(__dirname + "/views/forgot-password.html");
+});
 
-function muptime(seconds) {
-	function pad(s) {
-		return (s < 10 ? "0" : "") + s;
-	}
-	var hours = Math.floor(seconds / (60 * 60));
-	var minutes = Math.floor((seconds % (60 * 60)) / 60);
-	var seconds = Math.floor(seconds % 60);
+app.post('/api/register', (req, res) => {
+    const { username, password } = req.body;
 
-	return pad(hours) + " : " + pad(minutes) + " : " + pad(seconds);
-}
+    if (!username || !password) {
+        return res.status(400).json({ message: 'Username and password are required' });
+    }
+
+    fs.readFile(userFilePath, 'utf8', (err, data) => {
+        if (err) {
+            return res.status(500).json({ message: 'Error reading user file' });
+        }
+
+        let users = [];
+        if (data) {
+            users = JSON.parse(data);
+        }
+
+        if (users.find(user => user.username === username)) {
+            return res.status(400).json({ message: 'Username already exists' });
+        }
+
+        users.push({ username, password });
+
+        fs.writeFile(userFilePath, JSON.stringify(users, null, 2), err => {
+            if (err) {
+                return res.status(500).json({ message: 'Error writing user file' });
+            }
+            res.status(201).json({ message: 'User registered successfully' });
+        });
+    });
+});
+
+app.post('/api/login', (req, res) => {
+    const { username, password } = req.body;
+
+    if (!username || !password) {
+        return res.status(400).json({ message: 'Username and password are required' });
+    }
+
+    fs.readFile(userFilePath, 'utf8', (err, data) => {
+        if (err) {
+            return res.status(500).json({ message: 'Error reading user file' });
+        }
+
+        let users = JSON.parse(data);
+        const user = users.find(user => user.username === username && user.password === password);
+
+        if (!user) {
+            return res.status(400).json({ message: 'Invalid username or password' });
+        }
+
+        res.status(200).json({ message: 'Login successful' });
+    });
+});
+
+app.post('/api/forgot-password', (req, res) => {
+    const { username, newPassword } = req.body;
+
+    if (!username || !newPassword) {
+        return res.status(400).json({ message: 'Username and new password are required' });
+    }
+
+    fs.readFile(userFilePath, 'utf8', (err, data) => {
+        if (err) {
+            return res.status(500).json({ message: 'Error reading user file' });
+        }
+
+        let users = JSON.parse(data);
+        const user = users.find(user => user.username === username);
+
+        if (!user) {
+            return res.status(400).json({ message: 'Username not found' });
+        }
+
+        user.password = newPassword;
+
+        fs.writeFile(userFilePath, JSON.stringify(users, null, 2), err => {
+            if (err) {
+                return res.status(500).json({ message: 'Error writing user file' });
+            }
+            res.status(200).json({ message: 'Password reset successfully' });
+        });
+    });
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+});
